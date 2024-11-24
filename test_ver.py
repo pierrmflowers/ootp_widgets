@@ -9,13 +9,16 @@ import pandas as pd
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+#1. Treat like an expected value problem
+#2. Calculate using 10 years of RE 24
 
 
 #data imports for estimating value
 #the following information is derived based on league performance from 2015-2024
-
 batting_splits_real = pd.read_csv("irl_splits_2015-2024.csv")
+batter_splits_real = pd.read_csv("2015-2024_individuals.csv")
 batting_splits_real_by_type = pd.read_csv("irl_splits_2015-2024_by_hit_type.csv")
+game_state_probabilities = pd.read_csv("game_state_probabilities.csv")
 #drop columns that can interfere later
 columns_to_drop = ["I","tOPS+","sOPS+","Rk"]
 columns_to_drop_by_type = ["I","tOPS+","sOPS+","GS","Rk"]
@@ -25,12 +28,17 @@ for column in columns_to_drop_by_type:
     batting_splits_real_by_type.drop(column, axis=1, inplace=True)
 
 class batting_model():
-    def __init__(self):
+    def __init__(self,model_type="large",type_splits="Yes",player_name="NO_NAME"):
+        self.player_name = player_name
+        self.model_type = model_type
+        self.type_splits = type_splits
         self.real_averages = {}
-        self.real_averages_by_type = {}
         self.derived_averages = {}
-        self.derived_averages_by_type = {}
         self.outcome_by_type = {}
+        if (type_splits == "Yes"):
+            self.real_averages_by_type = {}
+            self.derived_averages_by_type = {}
+       
         
     def setup(self):
         #first val is wanted stat, second is what it's rounded to. should be 3 for % stats, 0 for counting stats
@@ -98,7 +106,7 @@ class batting_model():
                 self.outcome_by_type[outcome] = self.real_averages_by_type[outcome]["PA"]/self.real_averages["PA"]
             else:
                 self.outcome_by_type[outcome] = self.derived_averages[outcome]
-                
+    
     def at_bat(self,outcome_table="GENERIC",type_tables="GENERIC"):
         if outcome_table == "GENERIC":
             random_gen = random.random()
@@ -242,10 +250,11 @@ class batting_model():
                     runs_scored= runs_scored + 1
                     bases[1] = 0
                 if bases[0] == 1:
-                    if luck>0.5:
+                    if luck>0.65:
                         runs_scored= runs_scored + 1
-                        bases[0] = 1
+                        bases[0] = 0
                     else:
+                        bases[0] = 0
                         bases[2] = 1
                 bases[1] = 1
             elif at_bat == "1B":
@@ -254,13 +263,14 @@ class batting_model():
                     runs_scored= runs_scored + 1
                     bases[2] = 0
                 if bases[1] == 1:
-                    if luck > 0.75:
+                    if luck > 0.85:
                         runs_scored= runs_scored + 1
                         bases[1] = 0
                     else:
                         bases[2] = 1
+                        bases[1] = 0
                 if bases[0] == 1:
-                    if luck > 0.85:
+                    if luck > 0.99:
                         runs_scored= runs_scored + 1
                         bases[0] = 0
                     else:
@@ -277,24 +287,12 @@ class batting_model():
             if outs >= 3:
                 return runs_scored
             at_bat = self.at_bat()
-            
-def main():
-    sim_model = batting_model()
-    sim_model.setup()
-    #########model test full season#############
-    #model_test_results = pd.DataFrame()
-    #for sim in range(10000):
-    #    model_test_results[sim] = sim_model.full_season_batting_stats()
-    #model_test_results = model_test_results.transpose()
-    #ba_distribution = model_test_results["BA"]
-    #plt.hist(ba_distribution,bins=30,color="skyblue",edgecolor="black")
-    #plt.xlabel("Batting Average")
-    #plt.xlabel("Number of Batters")
-    #plt.xlabel("Distribution of Batting Average for League Average Hitter")
-    #plt.show()
-    #return model_test_results
-    #########model test from position#############
+
+#function for estimating the run value of different types of hit
+def hit_run_vals(sim_model):
+    matrix_1b = []
     matrix_2b = []
+    matrix_3b = []
     matrix_hr = []
     for first in range(2):
         for second in range(2):
@@ -302,21 +300,311 @@ def main():
                 for out in range(3):
                     model_test_results = pd.DataFrame()
                     for sim in range(10000):
-                        x = {"2B":sim_model.from_position(first,second,third,out,"2B"),"HR":sim_model.from_position(first,second,third,out,"HR")}
+                        x = {"1B":sim_model.from_position(first,second,third,out,"1B"),"2B":sim_model.from_position(first,second,third,out,"2B"),"3B":sim_model.from_position(first,second,third,out,"3B"),"HR":sim_model.from_position(first,second,third,out,"HR")}
                         model_test_results[sim] = x
                     model_test_results = model_test_results.transpose()
+                    single_distribution = model_test_results["1B"]
                     double_distribution = model_test_results["2B"]
+                    triple_distribution = model_test_results["3B"]
                     homer_distribution = model_test_results["HR"]
+                    plt.hist(single_distribution,bins=12,color="blue",edgecolor="black",alpha=0.5,label="1B Distribution")
                     plt.hist(double_distribution,bins=12,color="skyblue",edgecolor="black",alpha=0.5,label="2B Distribution")
+                    plt.hist(triple_distribution,bins=12,color="green",edgecolor="black",alpha=0.5,label="3B Distribution")
                     plt.hist(homer_distribution,bins=12,color="red",edgecolor="black",alpha=0.5,label="HR Distribution")
                     plt.xlabel("Runs Scored")
                     plt.ylabel("Samples")
                     plt.title(f"{out} out(s), {first} on first, {second} on second, {third} on third")
+                    plt.legend(loc='upper right')
                     plt.show()
+                    print(f"{sum((single_distribution)/10000)} runs per single with {out} out(s), {first} on first, {second} on second, {third} on third")
                     print(f"{sum((double_distribution)/10000)} runs per double with {out} out(s), {first} on first, {second} on second, {third} on third")
+                    print(f"{sum((triple_distribution)/10000)} runs per single with {out} out(s), {first} on first, {second} on second, {third} on third")
                     print(f"{sum((homer_distribution)/10000)} runs per home run with {out} out(s), {first} on first, {second} on second, {third} on third")
+                    matrix_1b.append([f"{sum((single_distribution)/10000)}",[first,second,third,out]])
                     matrix_2b.append([f"{sum((double_distribution)/10000)}",[first,second,third,out]])
+                    matrix_3b.append([f"{sum((triple_distribution)/10000)}",[first,second,third,out]])
                     matrix_hr.append([f"{sum((homer_distribution)/10000)}",[first,second,third,out]])
-    return matrix_2b,matrix_hr
-out = main()
+    out = [matrix_1b,matrix_2b,matrix_3b,matrix_hr]
+    tot_1b = 0
+    tot_2b = 0
+    tot_3b = 0
+    tot_hr = 0
+    #normalization data taken from williams paper
+    for val in range(len(out[0])):
+        tot_1b = tot_1b + float(out[0][val][0])
+    for val in range(len(out[1])):
+        tot_2b = tot_2b + float(out[1][val][0])
+    for val in range(len(out[2])):
+        tot_3b = tot_2b + float(out[2][val][0])
+    for val in range(len(out[1])):
+        tot_hr = tot_hr + float(out[3][val][0])
+
+    print(f"A single is worth {tot_1b/tot_hr} of a home run")
+    print(f"A double is worth {tot_2b/tot_hr} of a home run")
+    print(f"A triple is worth {tot_3b/tot_hr} of a home run")
+    return [tot_1b/tot_hr,tot_2b/tot_hr,tot_3b/tot_hr]
+
+#function for generating theoretical outcomes of a given season using a "probability table" (batting stats)
+def full_season_isolated(sim_model,number_of_seasons=10000):
+    model_test_results = pd.DataFrame()
+    for sim in range(10000):
+        model_test_results[sim] = sim_model.full_season_batting_stats()
+    model_test_results = model_test_results.transpose()
+    ba_distribution = model_test_results["OPS"]
+    plt.hist(ba_distribution,bins=30,color="skyblue",edgecolor="black")
+    plt.xlabel("OPS")
+    plt.ylabel("Number of Batters")
+    plt.title("Distribution of OPS for League Average Hitter")
+    plt.show()
+    real_distribution = batter_splits_real["OPS"]
+    plt.hist(real_distribution,bins=30,color="skyblue",edgecolor="black")
+    plt.xlabel("OPS")
+    plt.ylabel("Number of Batters")
+    plt.title("Distribution of OPS for Real Batters")
+    plt.show()
+    return model_test_results
+
+#function for generating theoretical outcomes of a given season given a full lineup (batting stats)
+def full_season_full_team_batting(lineup,number_of_seasons=10000):
+    every_season_stats = {}
+    for i in range(number_of_seasons): 
+        full_team_stats = {}
+        for z in range(9):
+            full_team_stats[lineup[z].player_name] = {"BA":0,"SLG":0,"OBP":0,"OPS":0,"PA":0,"AB":0,"BB":0,"HBP":0,"SO":0,"H":0,"1B":0,"2B":0,"3B":0,"HR":0,"R":0,"RBI":0,"ROE":0,"GDP":0,"SF":0,"SH":0,"BO":0,"GO":0,"LO":0,"FO":0}
+        for x in range(162):
+            full_team_stats = full_team_game(lineup,full_team_stats)
+        for q in range(9):
+            full_team_stats[lineup[q].player_name]["BA"] = round(full_team_stats[lineup[q].player_name]["H"]/full_team_stats[lineup[q].player_name]["AB"],3)
+            full_team_stats[lineup[q].player_name]["SLG"] = round((full_team_stats[lineup[q].player_name]["HR"]*4 + full_team_stats[lineup[q].player_name]["3B"]*3 + full_team_stats[lineup[q].player_name]["2B"]*2 + full_team_stats[lineup[q].player_name]["1B"])/full_team_stats[lineup[q].player_name]["AB"],3)
+            full_team_stats[lineup[q].player_name]["OBP"] = round((full_team_stats[lineup[q].player_name]["H"]+full_team_stats[lineup[q].player_name]["BB"]+full_team_stats[lineup[q].player_name]["HBP"])/full_team_stats[lineup[q].player_name]["PA"],3)
+            full_team_stats[lineup[q].player_name]["OPS"] = round(full_team_stats[lineup[q].player_name]["OBP"] + full_team_stats[lineup[q].player_name]["SLG"],3)
+        every_season_stats[i] = full_team_stats
+        print(i)
+    return every_season_stats
+                
+#generates result of full game offensive production independent of winner/loser and defense
+def full_team_game(lineup,full_team_stats):
+    next_batter = 0
+    for i in range(9):
+        inning_results = full_team_inning(next_batter,lineup)
+        for player in full_team_stats:
+            for stat in full_team_stats[player]:
+                full_team_stats[player][stat] = full_team_stats[player][stat] + inning_results[0][player][stat]
+        next_batter = inning_results[1]
+    return full_team_stats
+            
+#odds of scoring from a given base taken from williams paper
+def full_team_inning(starting_batter,starting_lineup,splits_by_type="Yes"):
+    bases = [0,0,0]
+    current_batter = starting_batter
+    #turnover the batting order if necessary
+    if current_batter > 8:
+        current_batter = 0
+    at_bat = starting_lineup[current_batter].at_bat()
+    outs = 0
+    inning_stats = {}
+    for player in starting_lineup:
+        inning_stats[player.player_name] =  {"BA":0,"SLG":0,"OBP":0,"OPS":0,"PA":0,"AB":0,"BB":0,"HBP":0,"SO":0,"H":0,"1B":0,"2B":0,"3B":0,"HR":0,"R":0,"RBI":0,"ROE":0,"GDP":0,"SF":0,"SH":0,"BO":0,"GO":0,"LO":0,"FO":0}
+    runs_scored = 0
+    while(splits_by_type == "Yes"):
+        if at_bat == "BB" or at_bat == "HBP" or at_bat == "ROE":
+            if bases[0] == 0:
+                bases[0] = starting_lineup[current_batter].player_name
+            elif (bases[0] != 0) and (bases[1] != 0) and (bases[2] != 0):
+                for player in range(len(starting_lineup)):
+                    if starting_lineup[player].player_name == bases[2]:
+                        inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                bases[2] = bases[1]
+                bases[1] = bases[0]
+                bases[0] = starting_lineup[current_batter].player_name
+                inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+            elif (bases[0] != 0) and (bases[1] != 0):
+                 bases[2] = bases[1]
+                 bases[1] = bases[0]
+                 bases[0] = starting_lineup[current_batter].player_name
+            elif (bases[0] != 0) and (bases[2] != 0):
+                 bases[1] = bases[0]
+                 bases[0] = starting_lineup[current_batter].player_name
+        elif at_bat == "FO" or at_bat == "GO" or at_bat == "SO" or at_bat == "BO":
+            outs = outs + 1
+        elif at_bat == "GDP":
+            if (bases[0] == 0) and (bases[1] == 0) and (bases[2] == 0):
+                outs = outs + 1
+                at_bat = "GO"
+            elif((bases[0] != 0) and (bases[1] != 0) and (bases[2] != 0)) and outs == 0:
+                luck = random.random()
+                if luck > 0.75:
+                    for player in range(len(starting_lineup)):
+                        if starting_lineup[player].player_name == bases[2]:
+                            inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                    inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                    bases[2] = bases[1]
+                    bases[1] = 0
+                    bases[0] = 0
+                else:
+                    bases[2] = bases[1]
+                    bases[1] = bases[0]
+                    bases[0] = 0
+            elif(((bases[0] == 0) and (bases[1] != 0) and (bases[2] != 0)) or ((bases[0] != 0) and (bases[1] == 0) and (bases[2] != 0)) or ((bases[0] != 0) and (bases[1] != 0) and (bases[2] == 0)) and (outs == 0)):    
+                luck = random.random()
+                if luck > 0.75:
+                    if bases[2] == 0:
+                        bases[2] = bases[1]
+                    bases[1] = 0
+                    bases[0] = 0
+                else:
+                    if bases[1] == 0:
+                        bases[1] = bases[0]
+                    bases[2] = 0
+                    bases[0] = 0
+            else:
+                 bases = [0,0,0]
+                 outs = outs + 2
+        elif at_bat == "HR":
+            inning_stats[starting_lineup[current_batter].player_name]["H"] = inning_stats[starting_lineup[current_batter].player_name]["H"] + 1
+            for i in range(3):
+                if bases[i] != 0:
+                    for player in range(len(starting_lineup)):
+                        if starting_lineup[player].player_name == bases[i]:
+                            inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                    inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                    bases[i] = 0
+        elif at_bat == "3B":
+            inning_stats[starting_lineup[current_batter].player_name]["H"] = inning_stats[starting_lineup[current_batter].player_name]["H"] + 1
+            for i in range(3):
+                if bases[i] != 0:
+                    for player in range(len(starting_lineup)):
+                        if starting_lineup[player].player_name == bases[i]:
+                            inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                    inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                    bases[i] = 0
+            bases[2] = starting_lineup[current_batter].player_name
+        elif at_bat == "2B":
+            inning_stats[starting_lineup[current_batter].player_name]["H"] = inning_stats[starting_lineup[current_batter].player_name]["H"] + 1
+            luck = random.random()
+            if bases[2] != 0:
+                for player in range(len(starting_lineup)):
+                    if starting_lineup[player].player_name == bases[2]:
+                        inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                bases[2] = 0
+            if bases[1] != 0:
+                for player in range(len(starting_lineup)):
+                    if starting_lineup[player].player_name == bases[1]:
+                        inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                bases[1] = 0
+            if bases[0] != 0:
+                if luck>0.25:
+                    for player in range(len(starting_lineup)):
+                        if starting_lineup[player].player_name == bases[0]:
+                            inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                    inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                    bases[0] = 0
+                else:
+                    bases[2] = bases[0]
+                    bases[0] = 0
+            bases[1] = starting_lineup[current_batter].player_name
+        elif at_bat == "1B":
+            inning_stats[starting_lineup[current_batter].player_name]["H"] = inning_stats[starting_lineup[current_batter].player_name]["H"] + 1
+            luck = random.random()
+            if bases[2] == 1:
+                for player in range(len(starting_lineup)):
+                    if starting_lineup[player].player_name == bases[2]:
+                        inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                bases[2] = 0
+            if bases[1] == 1:
+                if luck > 0.6:
+                    for player in range(len(starting_lineup)):
+                        if starting_lineup[player].player_name == bases[1]:
+                            inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                    inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                    bases[1] = 0
+                else:
+                    bases[2] = bases[1]
+                    bases[1] = 0
+            if bases[0] == 1:
+                if luck > 0.99:
+                    for player in range(len(starting_lineup)):
+                        if starting_lineup[player].player_name == bases[0]:
+                            inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                    inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                    bases[0] = 0
+                else:
+                    bases[1] = bases[0]
+            bases[0] = starting_lineup[current_batter].player_name
+        elif (at_bat == "SF") or (at_bat == "SH"):
+            if (outs < 2) and (bases[2] != 0):
+                for player in range(len(starting_lineup)):
+                    if starting_lineup[player].player_name == bases[2]:
+                        inning_stats[starting_lineup[player].player_name]["R"] = inning_stats[starting_lineup[player].player_name]["R"] + 1
+                inning_stats[starting_lineup[current_batter].player_name]["RBI"] = inning_stats[starting_lineup[current_batter].player_name]["RBI"] + 1
+                bases[2] = 0
+                outs = outs + 1
+            else:
+                outs = outs + 1
+                if at_bat == "SF":
+                    at_bat = "FO"
+                else:
+                    at_bat = "BO"
+        #log the result of the at_bat
+        inning_stats[starting_lineup[current_batter].player_name][at_bat] = inning_stats[starting_lineup[current_batter].player_name][at_bat] + 1
+        inning_stats[starting_lineup[current_batter].player_name]["PA"] = inning_stats[starting_lineup[current_batter].player_name]["PA"] + 1
+        if ((at_bat != "BB") and (at_bat != "HBP") and (at_bat != "SH") and (at_bat != "SF")):
+            inning_stats[starting_lineup[current_batter].player_name]["AB"] = inning_stats[starting_lineup[current_batter].player_name]["AB"] + 1
+        if outs >= 3:
+            return inning_stats,current_batter + 1
+        current_batter = current_batter + 1
+        #turnover the batting order if necessary
+        if current_batter > 8:
+            current_batter = 0
+        at_bat = starting_lineup[current_batter].at_bat()
+
+def main():
+    sim_model = batting_model()
+    sim_model.setup()
+    #########model test full season#############
+    #out = full_season_isolated(sim_model)
+    #return out
+    #########model test from position###########
+    #out = hit_run_vals(sim_model)
+    #return out
+    #########test of simming with lineup########
+    names = ["Jerry Potato","Fitz Gerald","Jasper Tarquin","Leo Leopold","Brad Ford","Finnick Ei","Reginald Stewart","Henry Hughe","Barnaby Cosmo"]
+    lineup = []
+    for i in range(len(names)):
+        lineup.append(batting_model(player_name=names[i]))
+        lineup[i].setup()
+    out = full_season_full_team_batting(lineup)
+    return out
+    
+x = main()
+################batting model lineup test###########################
+names = ["Jerry Potato","Fitz Gerald","Jasper Tarquin","Leo Leopold","Brad Ford","Finnick Ei","Reginald Stewart","Henry Hughe","Barnaby Cosmo"]
+overall_results = {}
+split_results = {}
+for i in names:
+    overall_results[i] = {}
+    split_results[i] = []
+    for year in range(len(x)):
+        overall_results[i][year] = x[year][i]
+        
+for year in range(len(x)):
+    for player in overall_results:
+        split_results[player].append(overall_results[player][year]["RBI"])
+
+
+for player in split_results:
+    dataset = split_results[player]
+    print(f"{sum(dataset)/len(dataset)} RBIs Per Season for {player}")
+    plt.hist(dataset,bins=12,color="skyblue",edgecolor="black",alpha=0.5,label="RBI Distribution")
+    plt.xlabel("Runs Scored")
+    plt.ylabel("Samples")
+    plt.title(f"RBI range for {player}")
+    #plt.legend(loc='upper right')
+    plt.show()
+
+    
+
 
