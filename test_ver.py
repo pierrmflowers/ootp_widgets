@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 batting_splits_real = pd.read_csv("irl_splits_2015-2024.csv")
 batter_splits_real = pd.read_csv("2015-2024_individuals.csv")
 batting_splits_real_by_type = pd.read_csv("irl_splits_2015-2024_by_hit_type.csv")
-game_state_probabilities = pd.read_csv("game_state_probabilities.csv")
 #drop columns that can interfere later
 columns_to_drop = ["I","tOPS+","sOPS+","Rk"]
 columns_to_drop_by_type = ["I","tOPS+","sOPS+","GS","Rk"]
@@ -26,6 +25,13 @@ for column in columns_to_drop:
     batting_splits_real.drop(column, axis=1, inplace=True)
 for column in columns_to_drop_by_type:
     batting_splits_real_by_type.drop(column, axis=1, inplace=True)
+#follwing is game state probabilities as determined by the williams paper
+game_state_probabilities = pd.read_csv("game_state_probabilities.csv")
+base_positions = ["[0, 0, 0","[1, 0, 0","[0, 1, 0","[1, 1, 0","[0, 0, 1","[1, 0, 1","[0, 1, 1","[1, 1, 1"]
+game_state_probabilities_organized = {}
+for i in range(8):
+    for z in range(3):
+        game_state_probabilities_organized[f"{base_positions[i]}, {z}]"] = game_state_probabilities.loc[i+1][z]
 
 class batting_model():
     def __init__(self,model_type="large",type_splits="Yes",player_name="NO_NAME"):
@@ -331,18 +337,18 @@ def hit_run_vals(sim_model):
     tot_hr = 0
     #normalization data taken from williams paper
     for val in range(len(out[0])):
-        tot_1b = tot_1b + float(out[0][val][0])
+        tot_1b = tot_1b + float(out[0][val][0])*game_state_probabilities_organized[str(out[0][val][1])]
     for val in range(len(out[1])):
-        tot_2b = tot_2b + float(out[1][val][0])
+        tot_2b = tot_2b + float(out[1][val][0])*game_state_probabilities_organized[str(out[1][val][1])]
     for val in range(len(out[2])):
-        tot_3b = tot_2b + float(out[2][val][0])
-    for val in range(len(out[1])):
-        tot_hr = tot_hr + float(out[3][val][0])
+        tot_3b = tot_2b + float(out[2][val][0])*game_state_probabilities_organized[str(out[2][val][1])]
+    for val in range(len(out[3])):
+        tot_hr = tot_hr + float(out[3][val][0])*game_state_probabilities_organized[str(out[3][val][1])]
 
     print(f"A single is worth {tot_1b/tot_hr} of a home run")
     print(f"A double is worth {tot_2b/tot_hr} of a home run")
     print(f"A triple is worth {tot_3b/tot_hr} of a home run")
-    return [tot_1b/tot_hr,tot_2b/tot_hr,tot_3b/tot_hr]
+    return out
 
 #function for generating theoretical outcomes of a given season using a "probability table" (batting stats)
 def full_season_isolated(sim_model,number_of_seasons=10000):
@@ -568,42 +574,40 @@ def main():
     #out = full_season_isolated(sim_model)
     #return out
     #########model test from position###########
-    #out = hit_run_vals(sim_model)
-    #return out
-    #########test of simming with lineup########
-    names = ["Jerry Potato","Fitz Gerald","Jasper Tarquin","Leo Leopold","Brad Ford","Finnick Ei","Reginald Stewart","Henry Hughe","Barnaby Cosmo"]
-    lineup = []
-    for i in range(len(names)):
-        lineup.append(batting_model(player_name=names[i]))
-        lineup[i].setup()
-    out = full_season_full_team_batting(lineup)
+    out = hit_run_vals(sim_model)
     return out
+    #########test of simming with lineup########
+    #names = ["Jerry Potato","Fitz Gerald","Jasper Tarquin","Leo Leopold","Brad Ford","Finnick Ei","Reginald Stewart","Henry Hughe","Barnaby Cosmo"]
+    #lineup = []
+    #for i in range(len(names)):
+    #    lineup.append(batting_model(player_name=names[i]))
+    #    lineup[i].setup()
+    #out = full_season_full_team_batting(lineup)
+    #return out
     
 x = main()
 ################batting model lineup test###########################
-names = ["Jerry Potato","Fitz Gerald","Jasper Tarquin","Leo Leopold","Brad Ford","Finnick Ei","Reginald Stewart","Henry Hughe","Barnaby Cosmo"]
-overall_results = {}
-split_results = {}
-for i in names:
-    overall_results[i] = {}
-    split_results[i] = []
-    for year in range(len(x)):
-        overall_results[i][year] = x[year][i]
-        
-for year in range(len(x)):
-    for player in overall_results:
-        split_results[player].append(overall_results[player][year]["RBI"])
-
-
-for player in split_results:
-    dataset = split_results[player]
-    print(f"{sum(dataset)/len(dataset)} RBIs Per Season for {player}")
-    plt.hist(dataset,bins=12,color="skyblue",edgecolor="black",alpha=0.5,label="RBI Distribution")
-    plt.xlabel("Runs Scored")
-    plt.ylabel("Samples")
-    plt.title(f"RBI range for {player}")
+#names = ["Jerry Potato","Fitz Gerald","Jasper Tarquin","Leo Leopold","Brad Ford","Finnick Ei","Reginald Stewart","Henry Hughe","Barnaby Cosmo"]
+#overall_results = {}
+#split_results = {}
+#for i in names:
+#    overall_results[i] = {}
+#    split_results[i] = []
+#    for year in range(len(x)):
+#        overall_results[i][year] = x[year][i]
+#        
+#for year in range(len(x)):
+#    for player in overall_results:
+#        split_results[player].append(overall_results[player][year]["RBI"])
+#for player in split_results:
+#    dataset = split_results[player]
+#    print(f"{sum(dataset)/len(dataset)} RBIs Per Season for {player}")
+#    plt.hist(dataset,bins=12,color="skyblue",edgecolor="black",alpha=0.5,label="RBI Distribution")
+#    plt.xlabel("Runs Scored")
+#    plt.ylabel("Samples")
+#    plt.title(f"RBI range for {player}")
     #plt.legend(loc='upper right')
-    plt.show()
+#    plt.show()
 
     
 
